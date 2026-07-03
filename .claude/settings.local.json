@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node inspect.js)",
+      "Bash(node crop2.js '{\"sx\":1550,\"sy\":900,\"sw\":300,\"sh\":250,\"scale\":5,\"grid\":25}' b4c4-crop.png)"
+    ]
+  }
+}

@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Night City — DataTerm Public Record</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600&display=swap');
+
+  :root {
+    --bg:        #0a0c0e;
+    --panel:     #0e1217;
+    --border:    #1e2d20;
+    --accent:    #39ff6a;
+    --accent2:   #ff3a6e;
+    --accent3:   #00c8ff;
+    --dim:       #3a4a3d;
+    --text:      #b8d4bc;
+    --text-dim:  #4a6450;
+    --scan:      rgba(57,255,106,0.03);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    overflow: hidden;
+  }
+
+  /* scanline overlay */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      var(--scan) 2px,
+      var(--scan) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ── LAYOUT ── */
+  #app {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    grid-template-rows: 48px 1fr;
+    height: 100vh;
+  }
+
+  /* ── TOPBAR ── */
+  #topbar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+
+  #topbar .logo {
+    font-family: 'Orbitron', monospace;
+    font-weight: 900;
+    font-size: 15px;
+    color: var(--accent);
+    letter-spacing: 2px;
+    white-space: nowrap;
+  }
+
+  #topbar .logo span { color: var(--text-dim); font-weight: 400; }
+
+  #topbar .sep { flex: 1; height: 1px; background: var(--border); }
+
+  #topbar .meta {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+
+  #clock {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 2px;
+  }
+
+  /* ── SIDEBAR ── */
+  #sidebar {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #search-wrap {
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+
+  #search {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--dim);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    padding: 8px 12px 8px 30px;
+    outline: none;
+    letter-spacing: 1px;
+    transition: border-color .2s;
+  }
+  #search:focus { border-color: var(--accent); }
+  #search::placeholder { color: var(--text-dim); }
+
+  .search-icon {
+    position: absolute;
+    left: 22px; top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-dim);
+    font-size: 12px;
+  }
+
+  /* district tabs */
+  #district-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    flex-shrink: 0;
+  }
+  #district-tabs::-webkit-scrollbar { display: none; }
+
+  .tab {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1px;
+    padding: 7px 10px;
+    color: var(--text-dim);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    transition: color .15s, border-color .15s;
+    flex-shrink: 0;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* location list */
+  #loc-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+  }
+  #loc-list::-webkit-scrollbar { width: 4px; }
+  #loc-list::-webkit-scrollbar-track { background: transparent; }
+  #loc-list::-webkit-scrollbar-thumb { background: var(--dim); }
+
+  .loc-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: background .12s;
+    border-left: 3px solid transparent;
+  }
+  .loc-item:hover { background: rgba(57,255,106,.04); }
+  .loc-item.active {
+    background: rgba(57,255,106,.08);
+    border-left-color: var(--accent);
+  }
+
+  .loc-code {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--accent);
+    width: 28px;
+    flex-shrink: 0;
+  }
+  .loc-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: .5px;
+  }
+  .loc-district-tag {
+    margin-left: auto;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 8px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    flex-shrink: 0;
+  }
+
+  .group-header {
+    padding: 10px 14px 4px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--accent);
+    letter-spacing: 3px;
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+  }
+
+  /* info panel at bottom of sidebar */
+  #info-panel {
+    border-top: 1px solid var(--border);
+    padding: 14px;
+    min-height: 130px;
+    background: var(--bg);
+    flex-shrink: 0;
+    transition: opacity .2s;
+  }
+  #info-panel.empty { opacity: .4; }
+
+  #info-code {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+  }
+  #info-name {
+    font-family: 'Orbitron', monospace;
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--text);
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+  #info-district {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+  #info-desc {
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.6;
+  }
+  #info-danger {
+    display: inline-block;
+    margin-top: 8px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    padding: 2px 6px;
+    border: 1px solid;
+  }
+  .danger-low  { color: var(--accent);  border-color: var(--accent); }
+  .danger-med  { color: #ffcc00;        border-color: #ffcc00; }
+  .danger-high { color: var(--accent2); border-color: var(--accent2); }
+
+  /* ── MAP AREA ── */
+  #map-area {
+    position: relative;
+    overflow: hidden;
+    background: #0b0f0c;
+    cursor: grab;
+  }
+  #map-area.panning { cursor: grabbing; }
+
+  #map-viewport {
+    position: absolute;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+
+  /* The original map image */
+  #base-map {
+    display: block;
+    width: 1400px;
+    height: 1180px;
+    opacity: .85;
+    image-rendering: crisp-edges;
+    -webkit-user-drag: none;
+    user-select: none;
+  }
+
+  /* SVG overlay for districts & pins */
+  #map-svg {
+    position: absolute;
+    top: 0; left: 0;
+    width: 1400px;
+    height: 1180px;
+    pointer-events: none;
+  }
+
+  .district-zone {
+    fill: transparent;
+    stroke: var(--accent);
+    stroke-width: 1.5;
+    stroke-dasharray: 6 4;
+    opacity: 0;
+    pointer-events: all;
+    cursor: pointer;
+    transition: opacity .2s, fill .2s;
+  }
+  .district-zone:hover, .district-zone.active {
+    opacity: 1;
+    fill: rgba(57,255,106,.06);
+  }
+  .district-zone.active { fill: rgba(57,255,106,.12); }
+
+  .pin {
+    pointer-events: all;
+    cursor: pointer;
+  }
+  .pin circle {
+    fill: var(--accent);
+    stroke: var(--bg);
+    stroke-width: 2;
+    transition: r .15s, fill .15s;
+  }
+  .pin:hover circle, .pin.active circle { fill: var(--accent2); r: 6; }
+  .pin.active circle { fill: var(--accent2); }
+
+  .pin-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    fill: var(--accent);
+    pointer-events: none;
+    text-shadow: 0 0 4px #000;
+  }
+  .pin:hover .pin-label, .pin.active .pin-label { fill: var(--accent2); }
+
+  /* zoom controls */
+  #zoom-controls {
+    position: absolute;
+    bottom: 16px; right: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 10;
+  }
+  .zoom-btn {
+    width: 32px; height: 32px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    font-family: 'Share Tech Mono', monospace;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s;
+  }
+  .zoom-btn:hover { background: rgba(57,255,106,.1); }
+
+  #zoom-level {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    text-align: center;
+    letter-spacing: 1px;
+  }
+
+  /* legend toggle */
+  #legend-toggle {
+    position: absolute;
+    bottom: 16px; left: 16px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--accent);
+    border: 1px solid var(--dim);
+    padding: 5px 10px;
+    background: var(--panel);
+    cursor: pointer;
+    z-index: 10;
+    transition: background .15s;
+  }
+  #legend-toggle:hover { background: rgba(57,255,106,.1); }
+
+  #legend-box {
+    position: absolute;
+    bottom: 50px; left: 16px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 12px 14px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text);
+    z-index: 10;
+    display: none;
+    line-height: 2;
+    letter-spacing: 1px;
+  }
+  #legend-box.open { display: block; }
+  .leg-row { display: flex; align-items: center; gap: 8px; }
+  .leg-swatch { width: 18px; height: 4px; flex-shrink: 0; }
+
+  /* tooltip */
+  #tooltip {
+    position: absolute;
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    padding: 5px 10px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--accent);
+    letter-spacing: 1px;
+    pointer-events: none;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity .15s;
+    white-space: nowrap;
+  }
+  #tooltip.show { opacity: 1; }
+
+  /* ── COMBAT ZONE flash ── */
+  @keyframes combatFlash {
+    0%, 100% { opacity: .8; }
+    50%       { opacity: .2; }
+  }
+  .combat-flash { animation: combatFlash 1.8s ease-in-out infinite; }
+
+  /* empty search */
+  .no-results {
+    padding: 20px 14px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-align: center;
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 700px) {
+    #app { grid-template-columns: 1fr; grid-template-rows: 48px 200px 1fr; }
+    #sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+    #info-panel { min-height: unset; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- TOPBAR -->
+  <header id="topbar">
+    <div class="logo">NC <span>▸</span> DATATERM</div>
+    <div class="sep"></div>
+    <div class="meta">TOPIC: NIGHT-CITY — DETAILED CITY MAP&nbsp;&nbsp;|&nbsp;&nbsp;PUBLIC RECORD ACCESS</div>
+    <div class="sep"></div>
+    <div id="clock"></div>
+  </header>
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar">
+    <div id="search-wrap">
+      <span class="search-icon">⌕</span>
+      <input id="search" type="text" placeholder="SEARCH LOCATION..." autocomplete="off" spellcheck="false">
+    </div>
+    <div id="district-tabs"></div>
+    <div id="loc-list"></div>
+    <div id="info-panel" class="empty">
+      <div id="info-code">SELECT A LOCATION</div>
+      <div id="info-name">—</div>
+      <div id="info-district"></div>
+      <div id="info-desc">Access the DataTerm network to retrieve location intel.</div>
+      <div id="info-danger"></div>
+    </div>
+  </aside>
+
+  <!-- MAP -->
+  <main id="map-area">
+    <div id="map-viewport">
+      <img id="base-map" src="NC-Map-clean.png" alt="Night City Map" draggable="false" onerror="this.style.display='none'; document.getElementById('map-fallback').style.display='block'">
+      <!-- Fallback canvas background if image doesn't load -->
+      <canvas id="map-fallback" width="1400" height="1180" style="display:none;background:#080b09;"></canvas>
+      <svg id="map-svg" viewBox="0 0 1400 1180" xmlns="http://www.w3.org/2000/svg">
+        <!-- District zones will be injected here -->
+        <g id="zones-layer"></g>
+        <!-- Pins layer -->
+        <g id="pins-layer"></g>
+      </svg>
+    </div>
+
+    <div id="tooltip"></div>
+    <div id="zoom-controls">
+      <button class="zoom-btn" id="zoom-in" title="Zoom in">+</button>
+      <div id="zoom-level">100%</div>
+      <button class="zoom-btn" id="zoom-out" title="Zoom out">−</button>
+      <button class="zoom-btn" id="zoom-reset" title="Reset" style="font-size:11px;">⌂</button>
+    </div>
+    <button id="legend-toggle">LEGEND</button>
+    <div id="legend-box">
+      <div class="leg-row">
+        <svg class="leg-swatch" viewBox="0 0 18 18" width="18" height="18" style="flex-shrink:0;">
+          <line x1="9" y1="4" x2="4"  y2="14" stroke="var(--accent)" stroke-width="1"/>
+          <line x1="9" y1="4" x2="14" y2="14" stroke="var(--accent)" stroke-width="1"/>
+          <line x1="9" y1="4" x2="9"  y2="12" stroke="var(--accent)" stroke-width="1"/>
+          <circle cx="9"  cy="4"  r="2" fill="var(--accent)"/>
+          <circle cx="4"  cy="14" r="2" fill="var(--accent)"/>
+          <circle cx="14" cy="14" r="2" fill="var(--accent)"/>
+          <circle cx="9"  cy="12" r="2" fill="var(--accent)"/>
+        </svg>
+        MCART Station
+      </div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#888"></span> Buildings</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#444;height:8px;"></span> Combat Zone</div>
+      <div class="leg-row"><span class="leg-swatch" style="border-top:2px solid #aaa;height:0;background:transparent"></span> Major Street</div>
+      <div class="leg-row"><span class="leg-swatch" style="border-top:1px dashed #666;height:0;background:transparent"></span> Minor Street</div>
+      <div class="leg-row"><span class="leg-swatch" style="border-top:3px double #aaa;height:0;background:transparent"></span> Highway</div>
+      <div class="leg-row"><span class="leg-swatch" style="border-top:2px solid #444;height:0;background:transparent"></span> Railroad</div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ── DATA ────────────────────────────────────────────────────────────────────
+const DISTRICTS = {
+  "ALL": "ALL",
+  "CITY CTR": "City Center",
+  "S.NIGHT": "South Night City",
+  "WESTBROOK": "Westbrook",
+  "PACIFICA": "Pacifica",
+  "N.OAK": "North Oak",
+  "RANCHO": "Rancho Coronado",
+  "HEYWOOD": "Heywood",
+  "MORRO": "Morro Rock"
+};
+
+const LOCATIONS = [
+  // City Center
+  { code:"A1", name:"Little Italy",           district:"CITY CTR",  x:583, y:421, danger:"med",
+    desc:"A dense residential and commercial enclave. Cramped alleys, old noodle bars, and corpo surveillance drones share the same sky." },
+  { code:"A2", name:"Northside District",      district:"CITY CTR",  x:614, y:402, danger:"med",
+    desc:"Industrial buffer zone between the gleaming towers and the combat zones. Fixer meet‑up hotspot." },
+  { code:"A3", name:"City Center",             district:"CITY CTR",  x:657, y:388, danger:"low",
+    desc:"The beating heart of Night City. Militech, Arasaka, and Kang Tao logos pierce the smog‑layered skyline. Corporate law rules here." },
+  { code:"A4", name:"Upper Eastside",          district:"CITY CTR",  x:691, y:375, danger:"low",
+    desc:"Glass towers and private security. If you're not on the list, you don't belong here." },
+  { code:"A5", name:"Upper Marina",            district:"CITY CTR",  x:716, y:361, danger:"low",
+    desc:"Luxury condos overlook the bay. Corpo execs, starlets, and off‑duty MaxTac are your neighbours." },
+  { code:"A6", name:"East Marina",             district:"CITY CTR",  x:757, y:344, danger:"med",
+    desc:"Shipping containers and upscale restaurants sit side by side. The docks move product; the restaurants move eddies." },
+  { code:"B1", name:"Westhill Gardens",        district:"CITY CTR",  x:606, y:480, danger:"med",
+    desc:"Mid‑tier housing blocks. The kind of place where people still water plastic plants on concrete balconies." },
+  { code:"B2", name:"Corporate Center",        district:"CITY CTR",  x:659, y:475, danger:"low",
+    desc:"Arasaka HQ satellite campus. Corporate intrigue radiates outward from this district like radiation from a spent fuel rod." },
+  { code:"B3", name:"Bank Block",              district:"CITY CTR",  x:683, y:435, danger:"low",
+    desc:"Old Night City financial district. Fortified vaults and heavily armed guards. The real money moved online decades ago, but the theatrics remain." },
+  { code:"B4", name:"Medical Center",          district:"CITY CTR",  x:722, y:452, danger:"low",
+    desc:"Trauma Team landing pads, ripperdoc clinics, and black‑market cyberware running side by side. Health is a luxury." },
+  { code:"B5", name:"Old Down Town",           district:"CITY CTR",  x:752, y:428, danger:"med",
+    desc:"Neon signs in six languages layer over crumbling pre‑war architecture. Night City's historical core." },
+  { code:"B6", name:"New Harbor Area",         district:"CITY CTR",  x:778, y:395, danger:"med",
+    desc:"A freshly developed waterfront district still under heavy corpo investment. Construction drones work 24/7." },
+  { code:"C1", name:"Night University",        district:"CITY CTR",  x:624, y:527, danger:"low",
+    desc:"Produces the next generation of salary workers for Night City's corporate machine. Tuition is listed in hours of indentured service." },
+  { code:"C2", name:"Lake Park",               district:"CITY CTR",  x:668, y:516, danger:"low",
+    desc:"One of Night City's few remaining public green spaces. Used by families during the day; fixers at night." },
+  { code:"C3", name:"Japantown",               district:"CITY CTR",  x:721, y:504, danger:"med",
+    desc:"Neon kanji, synth‑sake bars, and Arasaka affiliates dominate this district. Best ramen in the city, if you survive long enough to eat it." },
+  { code:"C4", name:"Little China",            district:"CITY CTR",  x:745, y:485, danger:"med",
+    desc:"Old traditions compressed into a six‑block grid. Tongs, street markets, and the best black‑market datachips around." },
+  { code:"C5", name:"Studio City",             district:"CITY CTR",  x:779, y:473, danger:"low",
+    desc:"BrainDance studios and media production facilities. Braindance addiction clinics are within walking distance." },
+  { code:"C6", name:"Charter Hill",            district:"CITY CTR",  x:816, y:480, danger:"low",
+    desc:"Affluent hillside suburb. Corpo middle management. Security robots on every corner." },
+
+  // South Night City
+  { code:"E1", name:"NC Municipal Sewage Plant", district:"S.NIGHT", x:446, y:852, danger:"high",
+    desc:"Massive grey water processing facility. Wraiths have been spotted operating tunnels beneath the plant. Do not go alone." },
+  { code:"E2", name:"San Morro Bay Container Port", district:"S.NIGHT", x:836, y:788, danger:"high",
+    desc:"Night City's main import hub. Smuggling, gang feuds, and corpo black‑ops happen here in equal measure." },
+  { code:"E3", name:"Petrochem Refinery Terminal", district:"S.NIGHT", x:866, y:828, danger:"high",
+    desc:"Petrochem's sprawling refinery. Toxic plumes are a normal Tuesday. Environmental regulations ended with the old government." },
+  { code:"E4", name:"Southland Mall",           district:"S.NIGHT", x:875, y:663, danger:"med",
+    desc:"Sprawling commercial complex, half‑abandoned. Squatter camps fill the empty retail shells on the upper floors." },
+
+  // Westbrook
+  { code:"F1", name:"Executive Estates",        district:"WESTBROOK", x:1071, y:233, danger:"low",
+    desc:"Gated community for Night City's elite. Private NCPD contracts, autonomous turrets, and zero tolerance for outsiders." },
+  { code:"F2", name:"North Distribution Substation", district:"WESTBROOK", x:1063, y:180, danger:"med",
+    desc:"Critical power infrastructure. Taking it offline would plunge half the city into darkness. Several factions know this." },
+
+  // Pacifica
+  { code:"G1", name:"WestWind Estates",         district:"PACIFICA",  x:539, y:1124, danger:"high",
+    desc:"Abandoned luxury resort turned gang stronghold. Voodoo Boys run the net from deep beneath these crumbling towers." },
+  { code:"G2", name:"Coastview",                district:"PACIFICA",  x:565, y:1051, danger:"high",
+    desc:"Unfinished mega‑development left to rot after the corporate withdrawal. One of the most dangerous zones in Night City." },
+  { code:"G3", name:"Playland by the Sea",      district:"PACIFICA",  x:598, y:1005, danger:"high",
+    desc:"Derelict theme park. The roller coaster still runs — sort of. Used as a Voodoo Boys initiation ground." },
+  { code:"G4", name:"Pacifica Arcology",        district:"PACIFICA",  x:356, y:1140, danger:"high",
+    desc:"Never completed arcology shell. Largest uninhabited structure in Night City. Urban explorers and scavengers compete for its secrets." },
+
+  // North Oak
+  { code:"H1", name:"The Oaks",                 district:"N.OAK",    x:695, y:127, danger:"low",
+    desc:"Ultra‑exclusive enclave atop the northern cliffs. No public transit, no corp security — just old Night City money and serious private firepower." },
+  { code:"H2", name:"HQ, CINC‑NORPAC",          district:"N.OAK",    x:834, y:276, danger:"low",
+    desc:"NORCAL military command. Not technically part of Night City governance, but their orbital assets disagree." },
+  { code:"H3", name:"157th Tactical Air SQDRN",  district:"N.OAK",    x:634, y:215, danger:"low",
+    desc:"Air force installation attached to Fort Lewis. You'll see aircraft from here over the entire city perimeter." },
+  { code:"H4", name:"223rd Armoured Battalion HDQTRS", district:"N.OAK", x:770, y:217, danger:"low",
+    desc:"Heavy armour stationed here can deploy citywide in under eight minutes. The corps pay handsomely to keep them disinterested." },
+
+  // Rancho Coronado
+  { code:"I1", name:"Corpo Housing Complexes",  district:"RANCHO",   x:694, y:986, danger:"med",
+    desc:"Cookie‑cutter hab‑blocks for blue‑collar corp employees. Surveilled 24/7. Rent comes out of your paycheck automatically." },
+  { code:"I2", name:"Minimallism Shopping Mall", district:"RANCHO",  x:778, y:1095, danger:"med",
+    desc:"Minimalist megamall. Corpo retail brands only. The food court has forty locations and somehow still only serves three things." },
+
+  // Heywood
+  { code:"J1", name:"Arasaka Weapon Assembly A‑452", district:"HEYWOOD", x:961, y:786, danger:"high",
+    desc:"Heavily fortified weapons manufacturing plant. The guns that kill Night City's citizens are often assembled here." },
+  { code:"J2", name:"Biotechnica Mono‑clonal Research Station", district:"HEYWOOD", x:1015, y:941, danger:"high",
+    desc:"Biotechnica's primary clone research hub. Rumours of unsanctioned human trials circulate on the darknet." },
+  { code:"J3", name:"EBM Remote Assembly Facility", district:"HEYWOOD", x:867, y:1036, danger:"high",
+    desc:"Robotics and cyberware fabrication. EBM's automation has eliminated 40,000 jobs in the district. Gangs fill the economic void." },
+  { code:"J4", name:"MiliTech Armed Assault Group Training & Live Fire Range", district:"HEYWOOD", x:950, y:1152, danger:"high",
+    desc:"MiliTech's urban warfare training ground. Occasionally misclassified as a public danger zone. Often correctly." },
+  { code:"J5", name:"South Distribution Substation", district:"HEYWOOD", x:1073, y:869, danger:"med",
+    desc:"Southern grid node. Cutting power here affects Heywood and Pacifica simultaneously." },
+
+  // Morro Rock
+  { code:"K1", name:"NC Spaceport",             district:"MORRO",    x:313, y:330, danger:"med",
+    desc:"Night City's orbital launch facility on Morro Rock island. Off‑world corps use it for discretionary cargo shipments. Heavily patrolled." },
+];
+
+// ── PIN POSITIONS (map coords relative to 1400×1180) ─────────────────────
+// Already embedded above in LOCATIONS.x/y
+
+// ── STATE ────────────────────────────────────────────────────────────────
+let scale = 1;
+let panX = 0, panY = 0;
+let isPanning = false, lastMX = 0, lastMY = 0;
+let activeCode = null;
+let activeDistrict = "ALL";
+let searchQuery = "";
+
+// ── CLOCK ────────────────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('en-US',{hour12:false}) + ' // ' +
+    now.toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'}).toUpperCase();
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── VIEWPORT / ZOOM / PAN ────────────────────────────────────────────────
+const mapArea = document.getElementById('map-area');
+const mapVP   = document.getElementById('map-viewport');
+
+function applyTransform() {
+  mapVP.style.transform = `translate(${panX}px,${panY}px) scale(${scale})`;
+  document.getElementById('zoom-level').textContent = Math.round(scale * 100) + '%';
+}
+
+// The scale at which the whole 1400×1180 map exactly fits inside the
+// viewport (letterboxed on whichever axis has slack). Also doubles as
+// the minimum zoom-out level, so you can never zoom past an empty frame.
+function fitScale() {
+  const rect = mapArea.getBoundingClientRect();
+  return Math.min(rect.width / 1400, rect.height / 1180);
+}
+
+// Fit the map to the current viewport size and center it.
+function fitToWindow() {
+  const rect = mapArea.getBoundingClientRect();
+  scale = fitScale();
+  panX = (rect.width  - 1400 * scale) / 2;
+  panY = (rect.height - 1180 * scale) / 2;
+  applyTransform();
+}
+
+function clampPan() {
+  const rect = mapArea.getBoundingClientRect();
+  const mw = 1400 * scale, mh = 1180 * scale;
+  // If the map is smaller than the viewport on an axis, center it there
+  // instead of pinning it to the top/left corner.
+  panX = mw <= rect.width  ? (rect.width  - mw) / 2 : Math.max(rect.width  - mw, Math.min(0, panX));
+  panY = mh <= rect.height ? (rect.height - mh) / 2 : Math.max(rect.height - mh, Math.min(0, panY));
+}
+
+function zoomTo(newScale, cx, cy) {
+  const clamped = Math.max(fitScale(), Math.min(2.5, newScale));
+  const factor  = clamped / scale;
+  panX = cx - factor * (cx - panX);
+  panY = cy - factor * (cy - panY);
+  scale = clamped;
+  clampPan();
+  applyTransform();
+}
+
+// Brief CSS transition for discrete (button/reset) zoom actions so they
+// glide instead of snapping; wheel/touch zoom stays untransitioned so it
+// tracks the cursor/fingers instantly.
+function withSmoothZoom(fn) {
+  mapVP.style.transition = 'transform .22s ease';
+  fn();
+  window.clearTimeout(withSmoothZoom._t);
+  withSmoothZoom._t = window.setTimeout(() => { mapVP.style.transition = ''; }, 230);
+}
+
+document.getElementById('zoom-in').addEventListener('click',  () => { const r=mapArea.getBoundingClientRect(); withSmoothZoom(() => zoomTo(scale*1.25,r.width/2,r.height/2)); });
+document.getElementById('zoom-out').addEventListener('click', () => { const r=mapArea.getBoundingClientRect(); withSmoothZoom(() => zoomTo(scale*0.8, r.width/2,r.height/2)); });
+document.getElementById('zoom-reset').addEventListener('click', () => { withSmoothZoom(fitToWindow); });
+
+mapArea.addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = mapArea.getBoundingClientRect();
+  zoomTo(scale * (e.deltaY < 0 ? 1.12 : 0.89), e.clientX - rect.left, e.clientY - rect.top);
+}, { passive: false });
+
+// Belt-and-suspenders: stop the browser's native "drag this image" gesture
+// from hijacking a pan drag (it otherwise fights our custom panning).
+mapArea.addEventListener('dragstart', e => e.preventDefault());
+
+mapArea.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  isPanning = true; lastMX = e.clientX; lastMY = e.clientY;
+  mapArea.classList.add('panning');
+});
+window.addEventListener('mousemove', e => {
+  if (!isPanning) return;
+  panX += e.clientX - lastMX; panY += e.clientY - lastMY;
+  lastMX = e.clientX; lastMY = e.clientY;
+  clampPan(); applyTransform();
+});
+window.addEventListener('mouseup', () => { isPanning = false; mapArea.classList.remove('panning'); });
+
+// Keep the map filling/centered in its viewport when the window resizes,
+// without yanking the user's current zoom/pan back to the default.
+window.addEventListener('resize', () => { clampPan(); applyTransform(); });
+
+// Touch pan
+let lastTouchX = 0, lastTouchY = 0, touchDist = 0;
+mapArea.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) { lastTouchX=e.touches[0].clientX; lastTouchY=e.touches[0].clientY; }
+  if (e.touches.length === 2) { touchDist = Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY); }
+}, { passive: true });
+mapArea.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (e.touches.length === 1) {
+    panX += e.touches[0].clientX - lastTouchX; panY += e.touches[0].clientY - lastTouchY;
+    lastTouchX=e.touches[0].clientX; lastTouchY=e.touches[0].clientY;
+    clampPan(); applyTransform();
+  }
+  if (e.touches.length === 2) {
+    const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    const rect=mapArea.getBoundingClientRect();
+    const cx=(e.touches[0].clientX+e.touches[1].clientX)/2-rect.left;
+    const cy=(e.touches[0].clientY+e.touches[1].clientY)/2-rect.top;
+    zoomTo(scale*(d/touchDist),cx,cy); touchDist=d;
+  }
+}, { passive: false });
+
+// ── TOOLTIP ──────────────────────────────────────────────────────────────
+const tooltip = document.getElementById('tooltip');
+function showTip(x, y, text) {
+  tooltip.textContent = text;
+  tooltip.style.left = (x+12)+'px'; tooltip.style.top = (y-20)+'px';
+  tooltip.classList.add('show');
+}
+function hideTip() { tooltip.classList.remove('show'); }
+mapArea.addEventListener('mousemove', e => {
+  const rect=mapArea.getBoundingClientRect();
+  tooltip.style.left=(e.clientX-rect.left+12)+'px';
+  tooltip.style.top=(e.clientY-rect.top-20)+'px';
+});
+
+// ── BUILD SVG PINS ───────────────────────────────────────────────────────
+const pinsLayer = document.getElementById('pins-layer');
+function buildPins() {
+  pinsLayer.innerHTML = '';
+  LOCATIONS.forEach(loc => {
+    const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.classList.add('pin');
+    g.dataset.code = loc.code;
+
+    const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    c.setAttribute('cx', loc.x); c.setAttribute('cy', loc.y); c.setAttribute('r','4');
+
+    const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+    t.classList.add('pin-label');
+    t.setAttribute('x', loc.x+6); t.setAttribute('y', loc.y+3);
+    t.textContent = loc.code;
+
+    g.appendChild(c); g.appendChild(t);
+
+    g.addEventListener('mouseenter', e => {
+      const rect=mapArea.getBoundingClientRect();
+      showTip(e.clientX-rect.left, e.clientY-rect.top, loc.code+' — '+loc.name);
+    });
+    g.addEventListener('mouseleave', hideTip);
+    g.addEventListener('click', e => { e.stopPropagation(); selectLocation(loc.code); });
+
+    pinsLayer.appendChild(g);
+  });
+}
+buildPins();
+
+// ── DISTRICT TABS ────────────────────────────────────────────────────────
+const tabsEl = document.getElementById('district-tabs');
+Object.entries(DISTRICTS).forEach(([key, label]) => {
+  const t = document.createElement('div');
+  t.className = 'tab' + (key==='ALL'?' active':'');
+  t.textContent = key;
+  t.dataset.district = key;
+  t.addEventListener('click', () => setDistrict(key));
+  tabsEl.appendChild(t);
+});
+
+function setDistrict(key) {
+  activeDistrict = key;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.district===key));
+  renderList();
+}
+
+// ── SEARCH ───────────────────────────────────────────────────────────────
+document.getElementById('search').addEventListener('input', e => {
+  searchQuery = e.target.value.trim().toLowerCase();
+  renderList();
+});
+
+// ── RENDER LIST ──────────────────────────────────────────────────────────
+function renderList() {
+  const list = document.getElementById('loc-list');
+  list.innerHTML = '';
+
+  const filtered = LOCATIONS.filter(loc => {
+    const districtMatch = activeDistrict==='ALL' || loc.district===activeDistrict;
+    const searchMatch   = !searchQuery ||
+      loc.name.toLowerCase().includes(searchQuery) ||
+      loc.code.toLowerCase().includes(searchQuery) ||
+      loc.district.toLowerCase().includes(searchQuery);
+    return districtMatch && searchMatch;
+  });
+
+  if (!filtered.length) {
+    list.innerHTML = '<div class="no-results">// NO RECORDS FOUND //</div>';
+    return;
+  }
+
+  // Group by district
+  const groups = {};
+  filtered.forEach(loc => {
+    if (!groups[loc.district]) groups[loc.district] = [];
+    groups[loc.district].push(loc);
+  });
+
+  Object.entries(groups).forEach(([dist, locs]) => {
+    const hdr = document.createElement('div');
+    hdr.className = 'group-header';
+    hdr.textContent = DISTRICTS[dist] || dist;
+    list.appendChild(hdr);
+
+    locs.forEach(loc => {
+      const item = document.createElement('div');
+      item.className = 'loc-item' + (loc.code===activeCode?' active':'');
+      item.dataset.code = loc.code;
+      item.innerHTML = `
+        <span class="loc-code">${loc.code}</span>
+        <span class="loc-name">${loc.name}</span>
+        <span class="loc-district-tag">${loc.district}</span>
+      `;
+      item.addEventListener('click', () => selectLocation(loc.code));
+      list.appendChild(item);
+    });
+  });
+}
+
+// ── SELECT LOCATION ──────────────────────────────────────────────────────
+function selectLocation(code) {
+  activeCode = code;
+  const loc = LOCATIONS.find(l => l.code===code);
+  if (!loc) return;
+
+  // Update list highlight
+  document.querySelectorAll('.loc-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.code===code));
+
+  // Update pins
+  document.querySelectorAll('.pin').forEach(el =>
+    el.classList.toggle('active', el.dataset.code===code));
+
+  // Update info panel
+  const ip = document.getElementById('info-panel');
+  ip.classList.remove('empty');
+  document.getElementById('info-code').textContent = code;
+  document.getElementById('info-name').textContent = loc.name;
+  document.getElementById('info-district').textContent = DISTRICTS[loc.district] || loc.district;
+  document.getElementById('info-desc').textContent = loc.desc;
+
+  const di = document.getElementById('info-danger');
+  di.className = 'danger-' + loc.danger;
+  const labels = { low:'◆ SAFE ZONE', med:'◆ CAUTION', high:'◆ COMBAT ZONE' };
+  di.textContent = labels[loc.danger];
+
+  // Pan map to pin
+  const mapRect = mapArea.getBoundingClientRect();
+  const cx = mapRect.width / 2;
+  const cy = mapRect.height / 2;
+  panX = cx - loc.x * scale;
+  panY = cy - loc.y * scale;
+  clampPan();
+  applyTransform();
+
+  // Scroll list item into view
+  const item = document.querySelector(`.loc-item[data-code="${code}"]`);
+  if (item) item.scrollIntoView({ block:'nearest', behavior:'smooth' });
+}
+
+// ── LEGEND TOGGLE ────────────────────────────────────────────────────────
+document.getElementById('legend-toggle').addEventListener('click', () => {
+  document.getElementById('legend-box').classList.toggle('open');
+});
+
+// ── INITIAL RENDER ───────────────────────────────────────────────────────
+renderList();
+fitToWindow();
+
+// Handle image load fallback — draw a stylized grid as backdrop
+const fallback = document.getElementById('map-fallback');
+document.getElementById('base-map').addEventListener('error', () => {
+  const ctx = fallback.getContext('2d');
+  ctx.fillStyle = '#080b09';
+  ctx.fillRect(0,0,1400,1180);
+  ctx.strokeStyle = '#1a2b1c';
+  ctx.lineWidth = 1;
+  for(let x=0;x<1400;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,1180); ctx.stroke(); }
+  for(let y=0;y<1180;y+=40){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(1400,y); ctx.stroke(); }
+  ctx.fillStyle='#39ff6a';
+  ctx.font='bold 28px monospace';
+  ctx.textAlign='center';
+  ctx.fillText('NIGHT CITY — DATATERM ACCESS', 700, 580);
+  ctx.font='14px monospace';
+  ctx.fillStyle='#3a6b40';
+  ctx.fillText('Map image unavailable. Pin locations displayed on grid.', 700, 620);
+  fallback.style.display='block';
+});
+</script>
+</body>
+</html>
